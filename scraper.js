@@ -16,6 +16,25 @@ function getExistingUrls(city) {
     return new Set();
 }
 
+async function extractGpsFromUrl(url) {
+    try {
+        // Nouveau pattern pour extraire les coordonnées
+        const match = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+        if (match) {
+            return {
+                latitude: parseFloat(match[1]),
+                longitude: parseFloat(match[2]),
+            };
+        }
+    } catch (error) {
+        console.error(
+            "Erreur lors de l'extraction des coordonnées GPS:",
+            error
+        );
+    }
+    return null;
+}
+
 async function scrapeRestaurantCategory(page, city, category) {
     console.log(`Scraping ${category} à ${city}...`);
 
@@ -112,15 +131,25 @@ async function scrapeRestaurantCategory(page, city, category) {
     // Exécuter le nouveau scroll
     await scrollAndCheckEnd();
 
-    // Récupérer les URLs
-    const urls = await page.evaluate(() => {
+    // Modification de la récupération des URLs pour inclure les coordonnées GPS
+    const results = await page.evaluate(() => {
         const elements = document.getElementsByClassName("hfpxzc");
-        return Array.from(elements).map((element) =>
-            element.getAttribute("href")
-        );
+        return Array.from(elements).map((element) => ({
+            url: element.getAttribute("href"),
+            name: element.getAttribute("aria-label") || "",
+        }));
     });
 
-    return urls;
+    // Ajouter les coordonnées GPS pour chaque restaurant
+    const restaurantsWithGps = await Promise.all(
+        results.map(async (restaurant) => ({
+            name: restaurant.name,
+            url: restaurant.url,
+            coordinates: await extractGpsFromUrl(restaurant.url),
+        }))
+    );
+
+    return restaurantsWithGps;
 }
 
 async function scrapeRestaurants(city) {
@@ -173,7 +202,11 @@ async function scrapeRestaurants(city) {
         city: city,
         total: allUrls.size,
         lastUpdate: new Date().toISOString(),
-        restaurants: Array.from(allUrls),
+        restaurants: Array.from(allUrls).map((restaurant) => ({
+            name: restaurant.name,
+            url: restaurant.url,
+            coordinates: restaurant.coordinates,
+        })),
     };
 
     // Sauvegarder les données
