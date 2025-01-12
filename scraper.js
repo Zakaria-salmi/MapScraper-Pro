@@ -134,11 +134,23 @@ if (!isMainThread) {
 
     async function extractGpsFromUrl(url) {
         try {
-            const match = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-            if (match) {
+            // Recherche des coordonnées avec le pattern !3d et !4d
+            const latMatch = url.match(/!3d(-?\d+\.\d+)/);
+            const lngMatch = url.match(/!4d(-?\d+\.\d+)/);
+
+            if (latMatch && lngMatch) {
                 return {
-                    latitude: parseFloat(match[1]),
-                    longitude: parseFloat(match[2]),
+                    latitude: parseFloat(latMatch[1]),
+                    longitude: parseFloat(lngMatch[1]),
+                };
+            }
+
+            // Fallback : recherche du pattern @lat,lng si la première méthode échoue
+            const fallbackMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+            if (fallbackMatch) {
+                return {
+                    latitude: parseFloat(fallbackMatch[1]),
+                    longitude: parseFloat(fallbackMatch[2]),
                 };
             }
         } catch (error) {
@@ -148,6 +160,131 @@ if (!isMainThread) {
             );
         }
         return null;
+    }
+
+    async function scrapeRestaurantDetails(page, url) {
+        await page.goto(url);
+        await page.waitForSelector("h1", { timeout: 5000 }).catch(() => null);
+
+        const coordinates = await extractGpsFromUrl(url);
+
+        const details = await page.evaluate((coords) => {
+            const getData = (selector, attribute = "text") => {
+                try {
+                    const element = document.querySelector(selector);
+                    if (!element) return "Non disponible";
+                    return attribute === "text"
+                        ? element.textContent.trim()
+                        : element.getAttribute(attribute);
+                } catch {
+                    return "Non disponible";
+                }
+            };
+
+            // Extraire le nom
+            let name = "Non disponible";
+            try {
+                const nameElement =
+                    document.querySelector("h1.DUwDvf") ||
+                    document.querySelector("h1.fontHeadlineLarge") ||
+                    document.querySelector("#QA0Szd h1");
+                if (nameElement) {
+                    name = nameElement.textContent.trim();
+                }
+            } catch (e) {
+                console.error("Erreur lors de l'extraction du nom:", e);
+            }
+
+            // Extraire la note, le nombre d'avis, la tranche de prix et le type
+            let rating = "Non disponible";
+            let reviewCount = "Non disponible";
+            let priceRange = "Non disponible";
+            let restaurantType = "Non disponible";
+
+            try {
+                // Extraction du type de restaurant d'abord pour le filtrage rapide
+                const typeElement = document.querySelector(
+                    "#QA0Szd > div > div > div.w6VYqd > div:nth-child(2) > div > div.e07Vkf.kA9KIf > div > div > div.TIHn2 > div > div.lMbq3e > div.LBgpqf > div > div:nth-child(2) > span:nth-child(1) > span > button"
+                );
+                if (typeElement) {
+                    restaurantType = typeElement.textContent.trim();
+                    // Si c'est un supermarché, on arrête immédiatement
+                    if (restaurantType === "Supermarché") {
+                        return null;
+                    }
+                }
+
+                // Vérification des avis
+                const reviewElement = document.querySelector(
+                    "#QA0Szd > div > div > div.w6VYqd > div:nth-child(2) > div > div.e07Vkf.kA9KIf > div > div > div.TIHn2 > div > div.lMbq3e > div.LBgpqf > div > div.fontBodyMedium.dmRWX > div.F7nice > span:nth-child(2) > span > span"
+                );
+                if (!reviewElement) {
+                    // Si pas d'avis, on arrête
+                    return null;
+                }
+                const reviewText = reviewElement.textContent.trim();
+                const match = reviewText.match(/(\d+)/);
+                if (!match) {
+                    // Si pas de nombre d'avis trouvé, on arrête
+                    return null;
+                }
+                reviewCount = parseInt(match[1]);
+
+                const ratingElement = document.querySelector(
+                    'div.F7nice span[aria-hidden="true"]'
+                );
+                if (ratingElement) {
+                    rating = parseFloat(
+                        ratingElement.textContent.replace(",", ".")
+                    );
+                }
+
+                // Extraction de la tranche de prix
+                const priceElement = document.querySelector(
+                    "#QA0Szd > div > div > div.w6VYqd > div:nth-child(2) > div > div.e07Vkf.kA9KIf > div > div > div.TIHn2 > div > div.lMbq3e > div.LBgpqf > div > div.fontBodyMedium.dmRWX > span > span > span > span:nth-child(2) > span > span"
+                );
+                if (priceElement) {
+                    priceRange = priceElement.textContent.trim();
+                }
+            } catch (e) {
+                console.error("Erreur lors de l'extraction des détails:", e);
+                return null;
+            }
+
+            // Récupérer les horaires
+            const hours = {};
+            const scheduleRows = document.querySelectorAll("table.eK4R0e tr");
+            scheduleRows.forEach((row) => {
+                try {
+                    const day = row.querySelector(".ylH6lf").textContent.trim();
+                    const time = row
+                        .querySelector(".mxowUb")
+                        .textContent.trim();
+                    hours[day] = time;
+                } catch (e) {}
+            });
+
+            return {
+                name: name,
+                address: getData("button[data-item-id='address'] div.Io6YTe"),
+                phone: getData("button[data-item-id^='phone:tel:'] div.Io6YTe"),
+                website: getData("a[data-item-id='authority']", "href"),
+                hours: Object.keys(hours).length > 0 ? hours : "Non disponible",
+                coordinates: coords,
+                rating: rating,
+                reviewCount: reviewCount,
+                priceRange: priceRange,
+                restaurantType: restaurantType,
+            };
+        }, coordinates);
+
+        // Si details est null, on ignore ce restaurant
+        if (!details) {
+            console.log("Restaurant ignoré : pas d'avis ou supermarché");
+            return null;
+        }
+
+        return details;
     }
 
     async function scrapeLocation(page, url, category) {
@@ -232,15 +369,33 @@ if (!isMainThread) {
             }));
         });
 
-        console.log(
-            `📊 Nombre de résultats pour ${category}: ${results.length}`
-        );
+        // Récupérer les détails pour chaque restaurant
+        const detailedResults = [];
+        for (const result of results) {
+            try {
+                console.log(`📍 Scraping détails pour: ${result.name}`);
+                const details = await scrapeRestaurantDetails(page, result.url);
+                if (details) {
+                    // On ajoute seulement si details n'est pas null
+                    detailedResults.push({
+                        ...details,
+                        originalUrl: result.url,
+                    });
+                }
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+            } catch (error) {
+                console.error(
+                    `Erreur lors du scraping des détails pour ${result.name}:`,
+                    error
+                );
+            }
+        }
 
         const coords = await extractGpsFromUrl(url);
         return {
             coordinates: coords,
-            results: results,
-            total: results.length,
+            results: detailedResults,
+            total: detailedResults.length,
         };
     }
 
@@ -324,9 +479,9 @@ if (!isMainThread) {
 
                 if (i + CONCURRENT_WORKERS < urls.length) {
                     console.log(
-                        "Pause de 30 secondes avant le prochain groupe..."
+                        "Pause de 10 secondes avant le prochain groupe..."
                     );
-                    await new Promise((resolve) => setTimeout(resolve, 30000));
+                    await new Promise((resolve) => setTimeout(resolve, 10000));
                 }
             } catch (error) {
                 console.error(
@@ -357,9 +512,9 @@ if (!isMainThread) {
 
             if (categories.indexOf(category) < categories.length - 1) {
                 console.log(
-                    "Pause de 5 minutes avant la prochaine catégorie..."
+                    "Pause de 1 minutes avant la prochaine catégorie..."
                 );
-                await new Promise((resolve) => setTimeout(resolve, 300000));
+                await new Promise((resolve) => setTimeout(resolve, 60000));
             }
         }
 
