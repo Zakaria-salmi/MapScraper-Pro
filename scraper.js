@@ -11,7 +11,7 @@ const path = require("path");
 puppeteer.use(StealthPlugin());
 
 // Configuration
-const CONCURRENT_WORKERS = 1;
+const CONCURRENT_WORKERS = 3;
 const categories = ["restaurant", "fast-food", "brasserie"];
 
 // Fonction pour lire les URLs depuis un fichier CSV
@@ -284,7 +284,69 @@ if (!isMainThread) {
             return null;
         }
 
-        return details;
+        // Extraire les photos après avoir récupéré tous les autres détails
+        let photos = [];
+        try {
+            const galleryButtonSelector =
+                "#QA0Szd > div > div > div.w6VYqd > div:nth-child(2) > div > div.e07Vkf.kA9KIf > div > div > div.ZKCDEc > div.RZ66Rb.FgCUCc > button";
+            await page.waitForSelector(galleryButtonSelector, {
+                timeout: 5000,
+            });
+            await page.click(galleryButtonSelector);
+            await page.waitForSelector("a[data-photo-index]", {
+                timeout: 5000,
+            });
+
+            photos = await page.evaluate(() => {
+                const photoUrls = [];
+                let currentIndex = 0;
+
+                while (photoUrls.length < 7 && currentIndex < 50) {
+                    const photoContainer = document.querySelector(
+                        `a[data-photo-index="${currentIndex}"]`
+                    );
+                    if (!photoContainer) break;
+
+                    const photoElement =
+                        photoContainer.querySelector("div.U39Pmb");
+                    if (photoElement) {
+                        const isVideo =
+                            photoElement.querySelector(
+                                "div.fontLabelMedium.a3lFge"
+                            ) !== null;
+
+                        if (!isVideo) {
+                            const style = photoElement.getAttribute("style");
+                            const urlMatch = style.match(/url\("([^"]+)"\)/);
+                            if (urlMatch && urlMatch[1]) {
+                                const cleanUrl = urlMatch[1].replace(
+                                    /=w\d+-h\d+-k-no/,
+                                    "=w2000-h2000-k-no"
+                                );
+                                if (cleanUrl.startsWith("https://")) {
+                                    photoUrls.push(cleanUrl);
+                                }
+                            }
+                        }
+                    }
+
+                    currentIndex++;
+                }
+
+                return photoUrls;
+            });
+
+            await page.keyboard.press("Escape");
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        } catch (error) {
+            console.log("Erreur lors de l'extraction des photos:", error);
+        }
+
+        // Ne retourner que les photos si nous en avons, sinon "Non disponible"
+        return {
+            ...details,
+            photos: photos.length > 0 ? photos : "Non disponible",
+        };
     }
 
     async function scrapeLocation(page, url, category) {
@@ -401,7 +463,7 @@ if (!isMainThread) {
 
     async function processUrl() {
         const browser = await puppeteer.launch({
-            headless: false,
+            headless: true,
             defaultViewport: null,
             args: ["--start-maximized", "--window-size=1920,1080"],
         });
