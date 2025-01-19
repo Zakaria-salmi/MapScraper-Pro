@@ -1,6 +1,6 @@
 # MapScraper Pro
 
-Ce projet est une application complète permettant de scraper et visualiser les données des restaurants en France. Il combine un scraper Node.js pour la collecte des données et une interface utilisateur Vue.js pour leur visualisation.
+Ce projet est une application complète permettant de scraper et visualiser les données des restaurants en France.
 
 ## Technologies utilisées
 
@@ -10,12 +10,6 @@ Ce projet est une application complète permettant de scraper et visualiser les 
 -   Puppeteer
 -   Worker Threads
 -   File System (fs)
-
-### Frontend (Viewer)
-
--   Vue.js 3
--   Tailwind CSS
--   @tailwindcss/forms
 
 ## Fonctionnalités
 
@@ -28,12 +22,6 @@ Ce projet est une application complète permettant de scraper et visualiser les 
     -   Photos (jusqu'à 7 par établissement)
     -   Horaires d'ouverture
     -   Tranche de prix
--   **Interface utilisateur** :
-    -   Tableau de bord avec statistiques
-    -   Filtrage et recherche
-    -   Visualisation détaillée des restaurants
-    -   Galerie photos
-    -   Design responsive
 
 ## Installation
 
@@ -50,21 +38,9 @@ Ce projet est une application complète permettant de scraper et visualiser les 
     npm install
     ```
 
-3. Installer les dépendances du frontend :
-    ```bash
-    cd frontend
-    npm install
-    ```
-
 ## Configuration
 
-1. Créer un fichier de configuration Tailwind :
-
-    ```bash
-    npx tailwindcss init
-    ```
-
-2. Configurer les catégories de restaurants dans le fichier `scraper.js` :
+1. Configurer les catégories de restaurants dans le fichier `scraper.js` :
     ```javascript
     const categories = ["restaurant", "fast-food", "brasserie"];
     ```
@@ -75,13 +51,6 @@ Ce projet est une application complète permettant de scraper et visualiser les 
 
 ```bash
 node scraper.js
-```
-
-### Démarrer l'interface utilisateur :
-
-```bash
-cd frontend
-npm run dev
 ```
 
 ## Structure des données
@@ -102,6 +71,4 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 4. Pousser vers la branche
 5. Ouvrir une Pull Request
 
-## Licence
 
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
