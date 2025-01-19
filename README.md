@@ -28,7 +28,7 @@ Ce projet est une application complète permettant de scraper et visualiser les 
 1. Cloner le dépôt :
 
     ```bash
-    git clone https://github.com/votre-username/restaurant-scraper.git
+    git clone https://github.com/Zakaria-salmi/MapScraper-Pro.git
     ```
 
 2. Installer les dépendances du backend :
